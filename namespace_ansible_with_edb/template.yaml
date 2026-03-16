@@ -2,14 +2,15 @@ apiVersion: scaffolder.backstage.io/v1beta3
 kind: Template
 metadata:
   name: aap-namespace-provisioning-ultimate
-  title: 🚀 Enterprise Namespace Factory
+  title: 🛡️ Enterprise Namespace Factory (Internal Alerts)
   description: |
-    Provision a secure, hardened OpenShift environment with built-in storage, 
-    database (EDB), secrets management (Vault), Dev Spaces, and custom notifications.
+    Full-lifecycle provisioning: Hardened OpenShift Namespace, **EDB Postgres**, **Vault**, **Dev Spaces** IDE, and **EDA Guardian**.
   tags:
     - ansible
-    - platform-engineering
+    - eda
     - devspaces
+    - vault
+    - edb
 spec:
   owner: group:default/platform-engineers
   type: project
@@ -21,7 +22,7 @@ spec:
         component_id:
           title: Namespace Name
           type: string
-          description: "Unique name (e.g., 'mobile-api-dev')"
+          description: "Unique name (e.g., 'inventory-api-dev')"
           ui:autofocus: true
         project_owner:
           title: Primary Owner
@@ -34,18 +35,16 @@ spec:
     - title: Step 2 - Resource Allocation
       properties:
         namespace_size:
-          title: Compute Resource Tier
+          title: Compute Tier
           type: string
           default: small
           oneOf:
-            - title: "🍃 Small - (2vCPU / 8Gi)"
+            - title: "Small - (2vCPU / 8Gi)"
               const: small
-            - title: "⚡ Medium - (4vCPU / 16Gi)"
-              const: medium
-            - title: "🔥 Large - (8vCPU / 32Gi)"
+            - title: "Large - (8vCPU / 32Gi)"
               const: large
         storage_request:
-          title: Persistent Storage Quota (GB)
+          title: Storage Quota (GB)
           type: number
           default: 10
           minimum: 1
@@ -54,20 +53,23 @@ spec:
     - title: Step 3 - Advanced Add-ons
       properties:
         enable_edb:
-          title: 🐘 Provision EDB Postgres Cluster?
+          title: Provision EDB Postgres Cluster?
           type: boolean
           default: false
         enable_vault:
-          title: 🔐 Setup HashiCorp Vault Integration?
+          title: Setup HashiCorp Vault Integration?
           type: boolean
           default: false
         enable_devspaces:
-          title: 💻 Initialize OpenShift Dev Spaces?
+          title: Initialize OpenShift Dev Spaces?
           type: boolean
           default: true
-          description: "Creates a pre-configured cloud workspace for this namespace."
+        enable_eda_guardian:
+          title: Enable EDA Self-Healing?
+          type: boolean
+          default: true
         db_instances:
-          title: Database High Availability Nodes
+          title: Database Nodes
           type: integer
           default: 3
           enum: [1, 3]
@@ -77,52 +79,21 @@ spec:
             - properties:
                 enable_edb: { enum: [true] }
 
-    - title: Step 4 - Communication Preferences
-      properties:
-        notification_mode:
-          title: Where should we send updates?
-          type: string
-          default: slack
-          enum: [slack, teams, both, none]
-          enumNames: ["💬 Slack", "🟦 Microsoft Teams", "🌟 Both", "🤫 None"]
-        slack_channel:
-          title: Slack Channel
-          type: string
-          default: "#dev-alerts"
-        teams_channel_name:
-          title: Teams Context Name
-          type: string
-          default: "General"
-      dependencies:
-        slack_channel:
-          oneOf:
-            - properties:
-                notification_mode: { enum: [slack, both] }
-        teams_channel_name:
-          oneOf:
-            - properties:
-                notification_mode: { enum: [teams, both] }
-
   steps:
-    - id: notify-slack
-      name: 💬 Sending Slack Alert
-      if: ${{ parameters.notification_mode == 'slack' or parameters.notification_mode == 'both' }}
-      action: notifications:send:slack
+    # --- INTERNAL DEV HUB NOTIFICATION ---
+    - id: internal-notify
+      name: Sending Platform Notification
+      action: notifications:send
       input:
-        channel: ${{ parameters.slack_channel }}
-        message: "🚀 *Namespace Provisioning Started* \n *Project:* `${{ parameters.component_id }}` \n *Owner:* ${{ parameters.project_owner }}"
-
-    - id: notify-teams
-      name: 🟦 Sending MS Teams Alert
-      if: ${{ parameters.notification_mode == 'teams' or parameters.notification_mode == 'both' }}
-      action: notifications:send:microsoft-teams
-      input:
-        webhookUrl: ${{ secrets.TEAMS_WEBHOOK_URL }}
+        # This sends the alert to the 'project_owner' identified in Step 1
+        recipients: 
+          - entityRef: ${{ parameters.project_owner }}
         title: "Provisioning Initialized"
-        text: "Project **${{ parameters.component_id }}** is being built by Ansible."
+        message: "Your request for namespace '${{ parameters.component_id }}' has been received. Ansible is now building the environment."
+        topic: "Provisioning"
 
     - id: trigger-aap
-      name: 🤖 Executing Ansible Automation Platform
+      name: Executing Ansible (AAP)
       action: rhaap:launch-job-template
       input:
         template_id: 'YOUR_AAP_TEMPLATE_ID'
@@ -135,22 +106,22 @@ spec:
           edb_nodes: ${{ parameters.db_instances | default(1) }}
           setup_vault: ${{ parameters.enable_vault }}
           setup_devspaces: ${{ parameters.enable_devspaces }}
-          notif_pref: ${{ parameters.notification_mode }}
+          eda_enabled: ${{ parameters.enable_eda_guardian }}
 
     - id: register
-      name: 📂 Registering in Software Catalog
+      name: Registering in Catalog
       action: catalog:register
       input:
         repoContentsUrl: "https://github.com/niksharma20/rhads-enablement-l3-st-self-service/blob/main/namespace_ansible_with_edb/catalog-info.yaml"
 
   output:
     links:
-      - title: 🛠️ Monitor AAP Job Progress
+      - title: Monitor Provisioning (AAP)
         url: ${{ steps['trigger-aap'].output.job_url }}
-      - title: 🌐 OpenShift Console (Namespace View)
+      - title: OpenShift Project
         url: "https://console-openshift-console.apps.yourcluster.com/k8s/cluster/projects/${{ parameters.component_id }}"
-      - title: 💻 OpenShift Dev Spaces
+      - title: Launch Dev Space
         url: "https://devspaces.apps.yourcluster.com/#/namespaces/${{ parameters.component_id }}"
-      - title: 📖 View Environment in Catalog
+      - title: View in Catalog
         icon: catalog
         entityRef: ${{ steps.register.output.entityRef }}
