@@ -5,11 +5,11 @@ metadata:
   title: 🚀 Enterprise Namespace Factory
   description: |
     Provisions a secure OpenShift environment via Ansible. 
-    **Includes Slack & MS Teams notifications.**
+    **Choose your preferred notification channel (Slack or Teams).**
   tags:
     - ansible
     - notifications
-    - security-hardened
+    - interactive-ui
 spec:
   owner: group:default/platform-engineers
   type: project
@@ -41,35 +41,63 @@ spec:
               const: small
             - title: "🔥 Large (8vCPU / 32Gi)"
               const: large
-        storage_request:
-          title: Persistent Storage (GB)
-          type: number
-          default: 10
 
-    - title: Step 3 - Add-ons
+    - title: Step 3 - Communication Preferences
       properties:
-        enable_edb:
-          title: 🐘 Provision EDB Postgres?
-          type: boolean
-          default: false
+        notification_mode:
+          title: Where should we send updates?
+          type: string
+          default: slack
+          enum:
+            - slack
+            - teams
+            - both
+          enumNames:
+            - "💬 Slack"
+            - "🟦 Microsoft Teams"
+            - "🌟 Both Channels"
+      
+    # Conditional Step: Only shows if Slack or Both is selected
+    - title: Slack Configuration
+      dependencies:
+        notification_mode: ['slack', 'both']
+      properties:
+        slack_channel:
+          title: Slack Channel
+          type: string
+          default: "#dev-alerts"
+          description: "Which channel should we post to?"
+
+    # Conditional Step: Only shows if Teams or Both is selected
+    - title: Teams Configuration
+      dependencies:
+        notification_mode: ['teams', 'both']
+      properties:
+        teams_channel_name:
+          title: Teams Channel Name
+          type: string
+          default: "Platform Engineering"
+          description: "Friendly name for the Teams notification."
 
   steps:
-    # --- NOTIFICATION START ---
+    # --- SLACK LOGIC ---
     - id: notify-slack
       name: 💬 Sending Slack Notification
+      if: ${{ parameters.notification_mode == 'slack' or parameters.notification_mode == 'both' }}
       action: notifications:send:slack
       input:
-        channel: '#platform-alerts'
-        message: "🚀 *New Provisioning Started* \n *Project:* ${{ parameters.component_id }} \n *Owner:* ${{ parameters.project_owner }} \n *Size:* ${{ parameters.namespace_size }}"
+        channel: ${{ parameters.slack_channel }}
+        message: "🚀 *Provisioning Started* for project: ${{ parameters.component_id }}"
 
+    # --- TEAMS LOGIC ---
     - id: notify-teams
       name: 🟦 Sending MS Teams Notification
+      if: ${{ parameters.notification_mode == 'teams' or parameters.notification_mode == 'both' }}
       action: notifications:send:microsoft-teams
       input:
         webhookUrl: ${{ secrets.TEAMS_WEBHOOK_URL }}
         title: "New Namespace Request"
-        text: "The project **${{ parameters.component_id }}** is currently being provisioned by Ansible for owner **${{ parameters.project_owner }}**."
-    # --- NOTIFICATION END ---
+        text: "The project **${{ parameters.component_id }}** is being provisioned in the **${{ parameters.teams_channel_name }}** context."
 
     - id: trigger-aap
       name: 🤖 Handing off to Ansible (AAP)
@@ -79,12 +107,10 @@ spec:
         extra_vars:
           namespace_name: ${{ parameters.component_id }}
           owner: ${{ parameters.project_owner }}
-          size: ${{ parameters.namespace_size }}
-          storage_gb: "${{ parameters.storage_request }}Gi"
-          setup_edb: ${{ parameters.enable_edb }}
+          notif_pref: ${{ parameters.notification_mode }}
 
     - id: register
-      name: 📂 Cataloging the new Environment
+      name: 📂 Cataloging
       action: catalog:register
       input:
         repoContentsUrl: "https://github.com/your-org/infra-repo/blob/main/catalog-info.yaml"
@@ -93,6 +119,3 @@ spec:
     links:
       - title: 🛠️ Monitor AAP Job
         url: ${{ steps['trigger-aap'].output.job_url }}
-      - title: 📖 View in Catalog
-        icon: catalog
-        entityRef: ${{ steps.register.output.entityRef }}
