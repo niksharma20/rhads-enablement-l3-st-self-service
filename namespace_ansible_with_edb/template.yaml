@@ -1,0 +1,113 @@
+apiVersion: scaffolder.backstage.io/v1beta3
+kind: Template
+metadata:
+  name: aap-namespace-provisioning-fancy
+  title: 🚀 Enterprise Namespace Factory
+  description: |
+    Self-service portal to provision a production-ready OpenShift environment. 
+    Includes automated **Network Policies**, **Storage Quotas**, and optional **EDB/Vault** integration via Ansible.
+  tags:
+    - ansible
+    - platform-engineering
+    - security-hardened
+spec:
+  owner: group:default/platform-engineers
+  type: project
+
+  parameters:
+    - title: Step 1 - Core Identity
+      required:
+        - component_id
+        - project_owner
+      properties:
+        component_id:
+          title: Namespace Name
+          type: string
+          description: Lowercase, no spaces (e.g., 'payment-gateway-dev')
+          ui:autofocus: true
+          ui:help: "This will be the actual name of your OpenShift project."
+        project_owner:
+          title: Primary Owner (Email/Group)
+          type: string
+          description: The main point of contact for this resource.
+          ui:field: EntityPicker
+          ui:options:
+            catalogFilter:
+              kind: [User, Group]
+
+    - title: Step 2 - Resource Allocation
+      properties:
+        namespace_size:
+          title: Resource Tier
+          type: string
+          default: small
+          oneOf:
+            - title: "🍃 Small - Dev/Testing (2vCPU / 8Gi)"
+              const: small
+            - title: "⚡ Medium - Staging (4vCPU / 16Gi)"
+              const: medium
+            - title: "🔥 Large - Production (8vCPU / 32Gi)"
+              const: large
+        storage_request:
+          title: Persistent Storage (GB)
+          type: number
+          default: 10
+          minimum: 5
+          maximum: 500
+          description: "Total disk space allocated for all PVCs in this namespace."
+
+    - title: Step 3 - Advanced Add-ons
+      properties:
+        enable_edb:
+          title: 🐘 Provision EDB Postgres Cluster?
+          type: boolean
+          default: false
+          ui:widget: select
+        enable_vault:
+          title: 🔐 Setup HashiCorp Vault Integration?
+          type: boolean
+          default: false
+          ui:widget: select
+
+    # This section only appears if EDB is enabled (using dependencies)
+    - title: EDB Configuration
+      dependencies:
+        enable_edb: [true]
+      properties:
+        db_instances:
+          title: Database Instances
+          type: integer
+          default: 3
+          enum: [1, 3, 5]
+          description: "High Availability: 3 nodes recommended for production."
+
+  steps:
+    - id: trigger-aap
+      name: 🤖 Handing off to Ansible Automation Platform
+      action: rhaap:launch-job-template
+      input:
+        template_id: 'YOUR_TEMPLATE_ID' # Replace with actual AAP Job ID
+        extra_vars:
+          namespace_name: ${{ parameters.component_id }}
+          owner: ${{ parameters.project_owner }}
+          size: ${{ parameters.namespace_size }}
+          storage_gb: "${{ parameters.storage_request }}Gi"
+          setup_edb: ${{ parameters.enable_edb }}
+          edb_nodes: ${{ parameters.db_instances | default(1) }}
+          setup_vault: ${{ parameters.enable_vault }}
+
+    - id: register
+      name: 📂 Cataloging the new Environment
+      action: catalog:register
+      input:
+        repoContentsUrl: "https://github.com/your-org/infra-repo/blob/main/catalog-info.yaml"
+
+  output:
+    links:
+      - title: 🛠️ Monitor Provisioning Progress (AAP)
+        url: ${{ steps['trigger-aap'].output.job_url }}
+      - title: 🌐 Go to OpenShift Console
+        url: "https://console-openshift-console.apps.yourcluster.com/k8s/cluster/projects/${{ parameters.component_id }}"
+      - title: 📖 View Environment in Catalog
+        icon: catalog
+        entityRef: ${{ steps.register.output.entityRef }}
