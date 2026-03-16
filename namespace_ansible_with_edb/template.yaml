@@ -62,15 +62,18 @@ spec:
           title: 🔐 Setup HashiCorp Vault Integration?
           type: boolean
           default: false
-      # Conditional fields for EDB
-      dependencies:
-        enable_edb: [true]
-      properties:
         db_instances:
           title: Database High Availability Nodes
           type: integer
           default: 3
           enum: [1, 3]
+          description: "Only used if EDB is enabled."
+      # This dependencies block is now correctly structured
+      dependencies:
+        db_instances:
+          oneOf:
+            - properties:
+                enable_edb: { enum: [true] }
 
     - title: Step 4 - Communication Preferences
       properties:
@@ -80,10 +83,6 @@ spec:
           default: slack
           enum: [slack, teams, both, none]
           enumNames: ["💬 Slack", "🟦 Microsoft Teams", "🌟 Both", "🤫 None"]
-      # Conditional fields for Notification Channels
-      dependencies:
-        notification_mode: ['slack', 'teams', 'both']
-      properties:
         slack_channel:
           title: Slack Channel
           type: string
@@ -92,9 +91,17 @@ spec:
           title: Teams Context Name
           type: string
           default: "General"
+      dependencies:
+        slack_channel:
+          oneOf:
+            - properties:
+                notification_mode: { enum: [slack, both] }
+        teams_channel_name:
+          oneOf:
+            - properties:
+                notification_mode: { enum: [teams, both] }
 
   steps:
-    # --- PRE-FLIGHT NOTIFICATIONS ---
     - id: notify-slack
       name: 💬 Sending Slack Alert
       if: ${{ parameters.notification_mode == 'slack' or parameters.notification_mode == 'both' }}
@@ -112,14 +119,12 @@ spec:
         title: "Provisioning Initialized"
         text: "Project **${{ parameters.component_id }}** is being built by Ansible."
 
-    # --- EXECUTION LAYER (AAP) ---
     - id: trigger-aap
       name: 🤖 Executing Ansible Automation Platform
       action: rhaap:launch-job-template
       input:
-        template_id: 'YOUR_AAP_TEMPLATE_ID'
+        template_id: 'YOUR_AAP_TEMPLATE_ID' # Ensure this is a string ID
         extra_vars:
-          # Mapping UI inputs to Ansible Variables
           namespace_name: ${{ parameters.component_id }}
           owner: ${{ parameters.project_owner }}
           size: ${{ parameters.namespace_size }}
@@ -129,17 +134,13 @@ spec:
           setup_vault: ${{ parameters.enable_vault }}
           notif_pref: ${{ parameters.notification_mode }}
 
-    # --- CATALOG REGISTRATION ---
     - id: register
       name: 📂 Registering in Software Catalog
       action: catalog:register
       input:
-        repoContentsUrl: "https://github.com/your-org/infra-repo/blob/main/catalog-info.yaml"
+        repoContentsUrl: "https://github.com/niksharma20/rhads-enablement-l3-st-self-service/blob/main/namespace_ansible_with_edb/catalog-info.yaml"
 
   output:
     links:
       - title: 🛠️ Monitor AAP Job Progress
         url: ${{ steps['trigger-aap'].output.job_url }}
-      - title: 📖 View Environment in Catalog
-        icon: catalog
-        entityRef: ${{ steps.register.output.entityRef }}
