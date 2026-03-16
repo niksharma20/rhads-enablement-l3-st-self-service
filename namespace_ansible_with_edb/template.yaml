@@ -1,10 +1,10 @@
 apiVersion: scaffolder.backstage.io/v1beta3
 kind: Template
 metadata:
-  name: aap-namespace-provisioning-ultimate
-  title: 🛡️ Enterprise Namespace Factory (Internal Alerts)
+  name: aap-namespace-provisioning
+  title: Enterprise Namespace Factory
   description: |
-    Full-lifecycle provisioning: Hardened OpenShift Namespace, **EDB Postgres**, **Vault**, **Dev Spaces** IDE, and **EDA Guardian**.
+    Full-lifecycle provisioning: Hardened OpenShift Namespace, EDB Postgres, Vault, Dev Spaces and EDA.
   tags:
     - ansible
     - eda
