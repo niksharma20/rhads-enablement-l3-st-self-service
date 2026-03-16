@@ -1,26 +1,27 @@
 apiVersion: scaffolder.backstage.io/v1beta3
 kind: Template
 metadata:
-  name: aap-namespace-provisioning-fancy
+  name: aap-namespace-provisioning-ultimate
   title: 🚀 Enterprise Namespace Factory
   description: |
-    Provisions a secure OpenShift environment via Ansible. 
-    **Choose your preferred notification channel (Slack or Teams).**
+    Provision a secure, hardened OpenShift environment with built-in storage, 
+    database (EDB), secrets management (Vault), and custom notifications.
   tags:
     - ansible
-    - notifications
-    - interactive-ui
+    - platform-engineering
+    - automation
 spec:
   owner: group:default/platform-engineers
   type: project
 
   parameters:
-    - title: Step 1 - Core Identity
+    - title: Step 1 - Project Identity
       required: [component_id, project_owner]
       properties:
         component_id:
           title: Namespace Name
           type: string
+          description: "Unique name (e.g., 'mobile-api-dev')"
           ui:autofocus: true
         project_owner:
           title: Primary Owner
@@ -33,89 +34,112 @@ spec:
     - title: Step 2 - Resource Allocation
       properties:
         namespace_size:
-          title: Resource Tier
+          title: Compute Resource Tier
           type: string
           default: small
           oneOf:
-            - title: "🍃 Small (2vCPU / 8Gi)"
+            - title: "🍃 Small - (2vCPU / 8Gi)"
               const: small
-            - title: "🔥 Large (8vCPU / 32Gi)"
+            - title: "⚡ Medium - (4vCPU / 16Gi)"
+              const: medium
+            - title: "🔥 Large - (8vCPU / 32Gi)"
               const: large
+        storage_request:
+          title: Persistent Storage Quota (GB)
+          type: number
+          default: 10
+          minimum: 1
+          maximum: 500
+          description: "Total storage allowance for your Persistent Volume Claims."
 
-    - title: Step 3 - Communication Preferences
+    - title: Step 3 - Advanced Add-ons
+      properties:
+        enable_edb:
+          title: 🐘 Provision EDB Postgres Cluster?
+          type: boolean
+          default: false
+        enable_vault:
+          title: 🔐 Setup HashiCorp Vault Integration?
+          type: boolean
+          default: false
+      # Conditional fields for EDB
+      dependencies:
+        enable_edb: [true]
+      properties:
+        db_instances:
+          title: Database High Availability Nodes
+          type: integer
+          default: 3
+          enum: [1, 3]
+
+    - title: Step 4 - Communication Preferences
       properties:
         notification_mode:
           title: Where should we send updates?
           type: string
           default: slack
-          enum:
-            - slack
-            - teams
-            - both
-          enumNames:
-            - "💬 Slack"
-            - "🟦 Microsoft Teams"
-            - "🌟 Both Channels"
-      
-    # Conditional Step: Only shows if Slack or Both is selected
-    - title: Slack Configuration
+          enum: [slack, teams, both, none]
+          enumNames: ["💬 Slack", "🟦 Microsoft Teams", "🌟 Both", "🤫 None"]
+      # Conditional fields for Notification Channels
       dependencies:
-        notification_mode: ['slack', 'both']
+        notification_mode: ['slack', 'teams', 'both']
       properties:
         slack_channel:
           title: Slack Channel
           type: string
           default: "#dev-alerts"
-          description: "Which channel should we post to?"
-
-    # Conditional Step: Only shows if Teams or Both is selected
-    - title: Teams Configuration
-      dependencies:
-        notification_mode: ['teams', 'both']
-      properties:
         teams_channel_name:
-          title: Teams Channel Name
+          title: Teams Context Name
           type: string
-          default: "Platform Engineering"
-          description: "Friendly name for the Teams notification."
+          default: "General"
 
   steps:
-    # --- SLACK LOGIC ---
+    # --- PRE-FLIGHT NOTIFICATIONS ---
     - id: notify-slack
-      name: 💬 Sending Slack Notification
+      name: 💬 Sending Slack Alert
       if: ${{ parameters.notification_mode == 'slack' or parameters.notification_mode == 'both' }}
       action: notifications:send:slack
       input:
         channel: ${{ parameters.slack_channel }}
-        message: "🚀 *Provisioning Started* for project: ${{ parameters.component_id }}"
+        message: "🚀 *Namespace Provisioning Started* \n *Project:* `${{ parameters.component_id }}` \n *Owner:* ${{ parameters.project_owner }}"
 
-    # --- TEAMS LOGIC ---
     - id: notify-teams
-      name: 🟦 Sending MS Teams Notification
+      name: 🟦 Sending MS Teams Alert
       if: ${{ parameters.notification_mode == 'teams' or parameters.notification_mode == 'both' }}
       action: notifications:send:microsoft-teams
       input:
         webhookUrl: ${{ secrets.TEAMS_WEBHOOK_URL }}
-        title: "New Namespace Request"
-        text: "The project **${{ parameters.component_id }}** is being provisioned in the **${{ parameters.teams_channel_name }}** context."
+        title: "Provisioning Initialized"
+        text: "Project **${{ parameters.component_id }}** is being built by Ansible."
 
+    # --- EXECUTION LAYER (AAP) ---
     - id: trigger-aap
-      name: 🤖 Handing off to Ansible (AAP)
+      name: 🤖 Executing Ansible Automation Platform
       action: rhaap:launch-job-template
       input:
-        template_id: 'YOUR_TEMPLATE_ID'
+        template_id: 'YOUR_AAP_TEMPLATE_ID'
         extra_vars:
+          # Mapping UI inputs to Ansible Variables
           namespace_name: ${{ parameters.component_id }}
           owner: ${{ parameters.project_owner }}
+          size: ${{ parameters.namespace_size }}
+          storage_gb: "${{ parameters.storage_request }}Gi"
+          setup_edb: ${{ parameters.enable_edb }}
+          edb_nodes: ${{ parameters.db_instances | default(1) }}
+          setup_vault: ${{ parameters.enable_vault }}
           notif_pref: ${{ parameters.notification_mode }}
 
+    # --- CATALOG REGISTRATION ---
     - id: register
-      name: 📂 Cataloging
+      name: 📂 Registering in Software Catalog
       action: catalog:register
       input:
         repoContentsUrl: "https://github.com/your-org/infra-repo/blob/main/catalog-info.yaml"
 
   output:
     links:
-      - title: 🛠️ Monitor AAP Job
+      - title: 🛠️ Monitor AAP Job Progress
         url: ${{ steps['trigger-aap'].output.job_url }}
+      - title: 📖 View Environment in Catalog
+        icon: catalog
+        entityRef: ${{ steps.register.output.entityRef }}
