@@ -2,7 +2,7 @@ apiVersion: scaffolder.backstage.io/v1beta3
 kind: Template
 metadata:
   name: aap-namespace-provisioning
-  title: Enterprise Namespace Factory
+  title: Namespace Factory
   description: |
     Full-lifecycle provisioning: Hardened OpenShift Namespace, EDB Postgres, Vault, Dev Spaces and EDA.
   tags:
