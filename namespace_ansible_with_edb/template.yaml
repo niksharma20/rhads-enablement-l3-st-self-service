@@ -11,6 +11,7 @@ metadata:
     - devspaces
     - vault
     - edb
+    - orchestrator
 spec:
   owner: group:default/platform-engineers
   type: project
