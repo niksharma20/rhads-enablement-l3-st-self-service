@@ -1,14 +1,14 @@
 apiVersion: scaffolder.backstage.io/v1beta3
 kind: Template
 metadata:
-  name: aap-namespace-provisioning
+  name: ansible-namespace-provisioning
   title: Enterprise Namespace via Ansible
   description: Provisions a secure OpenShift Namespace with Network Policies, EDB, and Vault via AAP.
   tags:
     - ansible
-    - aap
     - namespace
     - eda
+    - orchestrator
 spec:
   owner: group:default/tssc
   type: project
